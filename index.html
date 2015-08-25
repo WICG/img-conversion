@@ -1,39 +1,208 @@
-<!DOCTYPE html>
-<html lang="en">
+﻿<!DOCTYPE html>
+<html>
   <head>
-    <meta charset="utf-8">
-    <title>Unicorn Toasters Markup API</title>
-    <script src="http://www.w3.org/Tools/respec/respec-w3c-common" class="remove"></script>
+    <title>ImageData conversion extensions</title>
+    <meta charset='utf-8'>
+    <script src='https://www.w3.org/Tools/respec/respec-w3c-common'
+            async class='remove'></script>
     <script class='remove'>
       var respecConfig = {
-                  specStatus: "webspec"
-              ,   shortName: "img-conversion"
-              ,   editors: [{
-                      name: "Yoav Weiss"
-                  }]
+          specStatus: "webspec",
+          shortName:  "img-conversion,
+          edDraftURI:  "https://www.scirra.com/labs/specs/imagedata-conversion-extensions.html",
+          editors: [
+                {   name:       "Ashley Gullen",
+                    url:        "https://twitter.com/AshleyGullen",
+					mailto:		"ashley@scirra.com",
+                    company:    "Scirra Ltd",
+                    companyURL: "https://www.scirra.com"
+				},
+				{
+					name: "Yoav Weiss"
+				}
+          ],
+		  publishDate: "2015-07-07",
+          //previousMaturity: "FPWD",
+          //previousPublishDate:  "1977-03-15",
+          wg:           "@@TBD@@",
+          wgURI:        "@@TBD@@",
+          wgPublicList: "public-webapps",
+          //wgPatentURI:  "http://www.w3.org/2004/01/pp-impl/424242/status",
       };
     </script>
   </head>
   <body>
-    <section id="abstract">
+    <section id='abstract'>
       <p>
-        This specification does all manners of neat stuff.
-      </p>
-    </section>
-    <section id="sotd">
-      <p>
-        Pay no attention to this section at this time.
+        This document proposes some additional ImageData methods to asynchronously convert between HTMLImageElement, ImageData and Blob.
       </p>
     </section>
 
-    <section id="introduction">
-      <h2>Introduction</h2>
+    <section id='sotd'>
       <p>
-        There is a theory which states that if ever anybody discovers exactly what the Universe is
-        for and why it is here, it will instantly disappear and be replaced by something even more
-        bizarre and inexplicable. There is another theory which states that this has already
-        happened.
+        This is an unofficial draft to propose these features for the public-webapps mailing list.
       </p>
     </section>
+    
+    <section>
+      <h2>Introduction</h2>
+	  <p>
+	    Modern web apps need asynchronous functions to process image data without "janking" the browser UI. The ImageData interface was originally specified for use with the canvas [[2dcontext]], and as such all conversions involving it generally require synchronous use of an intermediate CanvasRenderingContext2D (which may introduce intermediate copies and additional memory overhead). Web apps may also need to convert images to and from Blobs representing images in their compressed form (such as a PNG file). This proposal adds new methods to circumvent synchronous use of the canvas and avoid any intermediate copies of images for these use cases, as well as methods to test which image formats can be encoded and decoded.
+	  </p>
+    </section>
+	
+	<section>
+      <h2>Proposed WebIDL</h2>
+	  
+      <dl class='idl' title='partial interface ImageData'>
+		
+		<dt>Promise&lt;Blob&gt; toBlob (optional DOMString type, optional dictionary encoderOptions)</dt>
+		<dd>
+			Asynchronously encode the ImageData to a blob with the given compressed format. This is intended to work identically to the HTMLCanvasElement <code>toBlob()</code> method, as if the ImageData had first been put in a canvas with <code>putImageData</code> and then <code>toBlob</code> called on the canvas with the same arguments.
+			
+			<dl class='parameters'>
+            <dt>optional DOMString type</dt>
+            <dd>
+              If provided, controls the type of the image to be returned (e.g. PNG or JPEG). The default is <code>image/png</code>; that type is also used if the given type isn't supported.
+            </dd>
+			<dt>optional dictionary encoderOptions</dt>
+            <dd>
+              Depends on the <code>type</code>. If <code>image/png</code> is used, this parameter is ignored. Other formats use the dictionary to specify the encoder options, e.g. JPEG quality. (TODO)
+            </dd>
+		</dd>
+		
+		<dt>static Promise&lt;ImageData&gt; create((HTMLImageElement or Blob) source)</dt>
+		<dd>
+			Asynchronously decompress the image data in a given Blob or HTMLImageElement, and return an <code>ImageData</code> object with the pixel data. This is intended to work identically to drawing the HTMLImageElement to a canvas and then using <code>getImageData</code>. In the case of passing a Blob it would work as with the HTMLImageElement by first obtaining a URL to the Blob and setting the <code>src</code> attribute of a new image to the blob URL.
+		</dd>
+		
+		<dt>static DOMString canDecodeType(DOMString mimeType)</dt>
+		<dd>
+			Return "", "maybe" or "probably" depending on the user agent's capability to decode a given image MIME type to either a HTMLImageElement or ImageData (by decoding from a Blob). This allows easy feature detection of support for decoding new image formats such as WebP or any other future formats. This is intended to be the image equivalent of <code>HTMLMediaElement.canPlayType</code>.
+		</dd>
+		
+		<dt>static DOMString canEncodeType(DOMString mimeType)</dt>
+		<dd>
+			Return "", "maybe" or "probably" depending on the user agent's capability to encode a given image MIME type with the ImageData or HTMLCanvasElement <code>toBlob</code> methods. This allows easy feature detection of support for encoding new image formats such as WebP or any other future formats. This is intended to be the image equivalent of <code>MediaRecorder.canRecordMimeType</code>.
+		</dd>
+	  </dl>
+	  </dl>
+    </section>
+	
+	<section>
+		<h2>Examples</h2>
+		
+		<p>Example 1 demonstrates decompressing a Blob to ImageData via an intermediate canvas. Note the steps involving the canvas, notably <code>getImageData</code>, are synchronous.</p>
+		<pre class='example highlight'>
+// note: looks asynchronous because it necessarily returns a promise
+// due to loading the blob as an Image, but the important parts are
+// still synchronous.
+function BlobToImageData(blob)
+{
+	let blobUrl = URL.createObjectURL(blob);
+	
+	return new Promise((resolve, reject) =>
+	{
+		let img = new Image();
+		img.onload = () => resolve(img);
+		img.onerror = err => reject(err);
+		img.src = blobUrl;
+	}).then(img =>
+	{
+		URL.revokeObjectURL(blobUrl);
+		
+		let w = img.width;
+		let h = img.height;
+		
+		let canvas = document.createElement("canvas");
+		canvas.width = w;
+		canvas.height = h;
+		let ctx = canvas.getContext("2d");
+		ctx.drawImage(img, 0, 0);
+		return ctx.getImageData(0, 0, w, h);	// some browsers synchronously decode image here
+	});
+};</pre>
+
+	<p>With this proposal it can be simplified to:</p>
+	<pre class='example highlight'>
+function BlobToImageData(blob)
+{
+	return ImageData.create(blob);
+};</pre>
+
+	<p>Example 3 demonstrates compressing an ImageData to a Blob via an intermediate canvas.</p>
+	<pre class='example highlight'>
+function ImageDataToBlob(imageData)
+{
+	let w = imageData.width;
+	let h = imageData.height;
+	let canvas = document.createElement("canvas");
+	canvas.width = w;
+	canvas.height = h;
+	let ctx = canvas.getContext("2d");
+	ctx.putImageData(imageData, 0, 0, w, h);	// synchronous
+	
+	return new Promise((resolve, reject) =>
+	{
+		canvas.toBlob(resolve);	// implied image/png format
+	});
+};</pre>
+
+	<p>With the new method this can be simplified to:</p>
+	<pre class='example highlight'>
+function ImageDataToBlob(imageData)
+{
+	return imageData.toBlob();		// implied "image/png" format
+};</pre>
+
+	</section>
+
+	<section>
+      <h2>Conversion to other types</h2>
+	  <p>ImageData can already be converted to and from a canvas via <code>getImageData</code> and <code>putImageData</code> (which probably should remain synchronous to avoid racing with other drawing), and to ImageBitmap via <code>createImageBitmap</code>. Conversion back to a HTMLImageElement requires that there be a valid <code>src</code> for the image, so this should be done via first converting to a Blob and creating a URL to the blob.</p>
+	  
+	  <p>Conversion from an ImageBitmap is omitted to avoid complications with the fact implementations may store them on the GPU in premultiplied form. Therefore converting an ImageBitmap to an ImageData could require an expensive readback from the GPU, and make it difficult to avoid a lossy pass through a premultiplied format. Instead whatever the ImageBitmap was created from should be directly converted to an ImageData without using ImageBitmap as an intermediate stage.</p>
+	  
+	  <p>Note this proposal does not cover animated formats, in particular GIF, APNG or MJPEG. It is suggested that ImageData remains as a representation of a single static image, and another interface providing access to an array of ImageData be specified for animated formats with its own methods to convert to/from Blob. If an animated format is specified for ImageData, it should operate on the first frame only.</p>
+	 </section>
+
+	<section>
+      <h2>Potential alternative solutions</h2>
+	  
+	  <section>
+		<h2>Additional ImageBitmap methods</h2>
+		<p>
+		  One suggestion was to use ImageBitmap as a "hub" of conversion, especially since <code>createImageBitmap</code> can already asynchronously convert a number of formats to ImageBitmap. However the purpose of an ImageBitmap is to be able to render "without undue latency", which implementors may interpret as a GPU resource in premultiplied format. This makes it difficult to convert to a different format, since GPU readback is expensive and premultiplication is lossy. It is not specifically intended to make ImageData the "hub" of conversion, but it is the appropriate format when the image pixel data needs to be read or modified.
+		</p>
+	  </section>
+	  <section>
+		  <h2>Asynchronous getImageData</h2>
+		  <p>
+			One alternative solution would be to add an asynchronous <code>getImageData</code> method to the 2d context. However most modern implementations use GPU-accelerated 2d contexts and such a method could require readback from the GPU, which has costly implications for performance. Use of a canvas also likely introduces additional memory use and possibly intermediate copies of the image data, which ought to be avoided for best performance and minimal memory overhead. GPU resources may also be premultiplied, which is lossy.
+		  </p>
+		  
+		  <p>Further, the logical counterpart to an asynchronous <code>getImageData</code> method is an asynchronous <code>putImageData</code> method. It is hard to see how this could be implemented without creating race conditions if more synchronous drawing happens during the processing. Should drawing done while it is processing be queued up to happen after, or should the drawing be overwritten when <code>putImageData</code> completes? Neither solution seems great, and the proposed methods circumvent the canvas entirely, side-stepping this problem.
+		  </p>
+	  </section>
+	  <section>
+		  <h2>Canvas-in-workers</h2>
+		  <p>
+		    Another possible solution is to run the canvas in a worker. Then the synchronous use of the canvas for conversion purposes will be processed in parallel to the main thread. However to implement this efficiently requires that various types be transferrable, which has further implications. It also does not help convert HTMLImageElement since it is a DOM element. Also it would likely require intermediate copies of the image data or the additional memory overhead of the canvas.
+		  </p>
+	  </section>
+    </section>
+	
+	<section>
+		<h2>Revision history</h2>
+		<p>
+		<ul>
+			<li>2015-08-25: fixed missing imageData parameter in putImageData call in example 3</li>
+			<li>2015-07-07: changed ImageData.toBlob() encoder options type from "any..." to "dictionary"</li>
+			<li>2015-07-03: first draft of this document</li>
+			<li>(2015-06-24: first draft of <a href="https://www.scirra.com/labs/specs/imagebitmap-conversion-extensions.html">ImageBitmap extensions</a>)</li>
+			<li>(2015-06-22: first draft of <a href="https://www.scirra.com/labs/specs/imagedata-blob-extensions.html">ImageData extensions</a>)</li>
+		</ul>
+		</p>
+	</section>
   </body>
 </html>
