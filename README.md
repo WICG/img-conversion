@@ -3,4 +3,4 @@
 
 Proposal for some additional `ImageData` methods to asynchronously convert between `HTMLImageElement`, `ImageData` and `Blob`.
 
- * [`ImageData` conversion extensions](http://wicg.github.io/img-conversion/)
+ * [`ImageData` conversion extensions](https://wicg.github.io/img-conversion/)
